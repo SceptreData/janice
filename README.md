@@ -53,11 +53,21 @@ Open `http://localhost:8000`.
 
 ## Environment Variables
 
-| Variable             | Required | Default                      | Description                          |
-| -------------------- | -------- | ---------------------------- | ------------------------------------ |
-| `OPENROUTER_API_KEY` | Yes      | --                           | OpenRouter API key                   |
-| `LLM_MODEL`          | No       | `google/gemma-3-27b-it:free` | Model ID from OpenRouter             |
-| `LLM_RATE_LIMIT`     | No       | `0`                          | Max requests per rate window; `0` disables local throttling |
-| `LLM_RATE_WINDOW`    | No       | `60`                         | Rate window in seconds               |
-| `LLM_MAX_TOOL_ROUNDS`| No       | `50`                         | Hard cap on tool-call rounds per chat |
-| `QMD_PATH`           | No       | `qmd`                        | Path to qmd binary for hybrid search |
+| Variable              | Required | Default                      | Description                                                 |
+| --------------------- | -------- | ---------------------------- | ----------------------------------------------------------- |
+| `OPENROUTER_API_KEY`  | Yes      | --                           | OpenRouter API key                                          |
+| `LLM_MODEL`           | No       | `google/gemma-3-27b-it:free` | Model ID from OpenRouter                                    |
+| `LLM_RATE_LIMIT`      | No       | `0`                          | Max requests per rate window; `0` disables local throttling |
+| `LLM_RATE_WINDOW`     | No       | `60`                         | Rate window in seconds                                      |
+| `LLM_MAX_TOOL_ROUNDS` | No       | `50`                         | Hard cap on tool-call rounds per chat                       |
+| `QMD_PATH`            | No       | `qmd`                        | Path to qmd binary for hybrid search                        |
+
+## What's Next
+
+- Stronger ingest prompts -- current prompts under-extract entities and miss cross-references
+- Agent skills -- let the LLM use richer tool chains (multi-step research, source comparison)
+- Better log -- structured operation log with filtering, not just append-only markdown
+- Page grouping -- smarter categorization in the index beyond the current flat type buckets
+- Tests -- no test suite exists yet
+- Wiki page deletion -- tools can create and update but not remove stale pages
+- Error recovery -- failed ingest batches stop cold; needs retry or partial resume
