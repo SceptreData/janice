@@ -8,7 +8,7 @@ Inspired by Karpathy's [LLM OS](https://x.com/karpathy/status/172314051955410573
 
 You upload source documents (PDFs, markdown, meeting notes) into `raw/`. The LLM reads them and maintains a wiki of interlinked markdown pages in `wiki/`. A schema file (`schema.md`) defines the conventions the LLM follows. The LLM has a personality defined in `SOUL.md` -- by default she's a plucky southern librarian named Janice.
 
-The chat interface uses prompt-based tool calling: the LLM emits tool calls in fenced code blocks, and the backend executes them in a loop. Tools let the LLM list, read, write, and search wiki pages, and read source documents (including PDF text extraction via `pdftotext`).
+The chat interface uses prompt-based tool calling: the LLM emits tool calls in fenced code blocks, and the backend executes them in a loop. Tools let the LLM list, read, write, search, and lint wiki pages, and read source documents (including PDF text extraction via `pdftotext`).
 
 The frontend is a two-pane layout -- chat on the left, wiki browser on the right with a page list, page viewer, and a D3 force-directed graph of wikilinks.
 
@@ -47,6 +47,7 @@ Open `http://localhost:8000`.
 - **Chat** -- ask questions, request ingestion of sources, or ask for a wiki lint/health check.
 - **Drop files** -- drag files onto the chat pane to upload them as sources, then click Ingest.
 - **Browse** -- the right pane shows wiki pages, rendered markdown, and a graph of connections between pages.
+- **Lint** -- the header button runs the backend wiki validator directly and reports broken links, schema drift, and missing metadata.
 - **Model picker** -- switch between free OpenRouter models from the dropdown.
 - **Themes** -- Everforest (default) and Gruvbox dark.
 
@@ -58,4 +59,5 @@ Open `http://localhost:8000`.
 | `LLM_MODEL`          | No       | `google/gemma-3-27b-it:free` | Model ID from OpenRouter             |
 | `LLM_RATE_LIMIT`     | No       | `15`                         | Max requests per rate window         |
 | `LLM_RATE_WINDOW`    | No       | `60`                         | Rate window in seconds               |
+| `LLM_MAX_TOOL_ROUNDS`| No       | `15`                         | Hard cap on tool-call rounds per chat |
 | `QMD_PATH`           | No       | `qmd`                        | Path to qmd binary for hybrid search |
