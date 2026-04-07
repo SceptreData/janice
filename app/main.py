@@ -12,8 +12,17 @@ from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .llm import chat_stream
-from .schema import ChatRequest, GraphData, GraphEdge, GraphNode, WikiPage
-from .tools import parse_frontmatter as _parse_frontmatter, WIKI_DIR, RAW_DIR
+from .schema import ChatRequest, GraphData, GraphEdge, GraphNode, LintReport, WikiPage
+from .wiki_lint import run_wiki_lint
+from .wiki_ops import (
+    RAW_DIR,
+    WIKI_DIR,
+    iter_wikilinks,
+    parse_frontmatter as _parse_frontmatter,
+    resolve_path_under,
+    resolve_wiki_page_path,
+    strip_frontmatter,
+)
 
 # Structured logging setup — one JSON line per event to stdout
 _handler = logging.StreamHandler(sys.stdout)
@@ -145,8 +154,9 @@ async def list_wiki():
 
 _TYPE_KEYWORDS = {
     "source": {"source", "summary", "document", "report", "transcript", "meeting"},
-    "entity": {"entity", "person", "organization", "place", "company", "team"},
+    "entity": {"entity", "person", "organization", "place", "company", "team", "vendor"},
     "concept": {"concept", "idea", "theory", "framework", "principle"},
+    "topic": {"project", "program", "initiative", "legal", "policy", "process", "procurement", "negotiation"},
     "meta": {"meta", "index", "log"},
 }
 
@@ -159,7 +169,6 @@ def _infer_node_type(name: str, fm: dict) -> str:
     for node_type, keywords in _TYPE_KEYWORDS.items():
         if tags & keywords:
             return node_type
-    # Fall back to checking if it has sources (likely a source summary page)
     if fm.get("sources"):
         return "source"
     return "topic"
@@ -180,11 +189,8 @@ async def wiki_graph():
         node_type = _infer_node_type(name, fm)
         nodes.append(GraphNode(id=name, title=fm.get("title", name), type=node_type))
 
-        # Extract [[wikilinks]]
-        links = re.findall(r"\[\[([^\]]+)\]\]", content)
-        for link in links:
-            target = link.lower().replace(" ", "-")
-            edges.append(GraphEdge(source=name, target=target))
+        for link in iter_wikilinks(content):
+            edges.append(GraphEdge(source=name, target=link["target"]))
 
     # Only include edges where both endpoints exist
     edges = [e for e in edges if e.source in page_names and e.target in page_names]
@@ -192,15 +198,22 @@ async def wiki_graph():
     return GraphData(nodes=nodes, edges=edges)
 
 
+@app.get("/api/wiki/lint", response_model=LintReport)
+async def lint_wiki():
+    return run_wiki_lint()
+
+
 @app.get("/api/wiki/{page}")
 async def get_wiki_page(page: str):
-    path = WIKI_DIR / f"{page}.md"
+    try:
+        path = resolve_wiki_page_path(page)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "invalid page name"})
     if not path.exists():
         return {"error": "not found"}
     content = path.read_text(encoding="utf-8")
     fm = _parse_frontmatter(content)
-    # Strip frontmatter for the body
-    body = re.sub(r"^---\n.*?\n---\n*", "", content, count=1, flags=re.DOTALL)
+    body = strip_frontmatter(content)
     return {"name": page, "frontmatter": fm, "body": body}
 
 
@@ -252,7 +265,13 @@ async def pending_sources():
 @app.post("/api/sources")
 async def upload_source(file: UploadFile):
     RAW_DIR.mkdir(exist_ok=True)
-    dest = RAW_DIR / file.filename
+    filename = Path(file.filename or "").name
+    if not filename:
+        return JSONResponse(status_code=400, content={"error": "invalid filename"})
+    try:
+        dest = resolve_path_under(RAW_DIR, filename)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "invalid filename"})
     with open(dest, "wb") as f:
         shutil.copyfileobj(file.file, f)
     return {"filename": file.filename}

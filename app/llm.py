@@ -6,11 +6,11 @@ import os
 import re
 import time
 from collections.abc import AsyncGenerator
-from pathlib import Path
 
 from openai import AsyncOpenAI, RateLimitError
 
 from .tools import TOOL_DEFINITIONS, execute_tool
+from .wiki_ops import SCHEMA_PATH, SOUL_PATH
 
 logger = logging.getLogger("janice")
 
@@ -22,8 +22,6 @@ def _log_event(event: str, **kwargs) -> None:
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 MODEL = os.environ.get("LLM_MODEL", "google/gemma-3-27b-it:free")
-SCHEMA_PATH = Path("schema.md")
-SOUL_PATH = Path("SOUL.md")
 
 client = AsyncOpenAI(
     base_url=OPENROUTER_BASE,
@@ -36,6 +34,7 @@ TOOL_SCHEMA_BLOCK = json.dumps(TOOL_DEFINITIONS, indent=2)
 # Defaults: 15 requests per 60-second window.
 _RATE_LIMIT = int(os.environ.get("LLM_RATE_LIMIT", "15"))
 _RATE_WINDOW = float(os.environ.get("LLM_RATE_WINDOW", "60"))
+_MAX_TOOL_ROUNDS = int(os.environ.get("LLM_MAX_TOOL_ROUNDS", "15"))
 _request_timestamps: collections.deque[float] = collections.deque()
 _rate_lock = asyncio.Lock()
 
@@ -145,7 +144,7 @@ async def chat_stream(
 
     round_num = 0
     empty_retries = 0
-    while True:
+    while round_num < _MAX_TOOL_ROUNDS:
         # Throttle outgoing requests to avoid upstream rate limits
         throttle_wait = await _wait_for_capacity()
         if throttle_wait > 0:
@@ -249,3 +248,12 @@ async def chat_stream(
         })
 
         round_num += 1
+
+    _log_event("chat_end", rounds=round_num, reason="tool_round_limit")
+    yield {
+        "event": "text",
+        "data": (
+            f"Stopped after {_MAX_TOOL_ROUNDS} tool round(s). "
+            "The request needs a tighter prompt or manual follow-up."
+        ),
+    }

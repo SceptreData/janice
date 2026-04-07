@@ -1,12 +1,9 @@
 import os
-import re
 import subprocess
-import yaml
-from pathlib import Path
 
-WIKI_DIR = Path("wiki")
-RAW_DIR = Path("raw")
-SCHEMA_PATH = Path("schema.md")
+from .wiki_lint import format_lint_report, run_wiki_lint
+from .wiki_ops import RAW_DIR, WIKI_DIR, parse_frontmatter, resolve_path_under, resolve_wiki_page_path
+
 QMD_PATH = os.environ.get("QMD_PATH", "qmd")
 
 TOOL_DEFINITIONS = [
@@ -27,7 +24,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "write_wiki",
-        "description": "Create or update a wiki page. Content should be full markdown with YAML frontmatter.",
+        "description": "Create or update a wiki page. Content should be full markdown with YAML frontmatter matching our schema.",
         "parameters": {
             "page": {
                 "type": "string",
@@ -64,17 +61,12 @@ TOOL_DEFINITIONS = [
             }
         },
     },
+    {
+        "name": "lint_wiki",
+        "description": "Validate wiki integrity: frontmatter, links, sources, index, and log structure.",
+        "parameters": {},
+    },
 ]
-
-
-def parse_frontmatter(text: str) -> dict:
-    match = re.match(r"^---\n(.*?)\n---", text, re.DOTALL)
-    if not match:
-        return {}
-    try:
-        return yaml.safe_load(match.group(1)) or {}
-    except yaml.YAMLError:
-        return {}
 
 
 def list_wiki() -> str:
@@ -90,15 +82,14 @@ def list_wiki() -> str:
 
 
 def read_wiki(page: str) -> str:
-    path = WIKI_DIR / f"{page}.md"
+    path = resolve_wiki_page_path(page)
     if not path.exists():
         return f"Page '{page}' does not exist."
     return path.read_text(encoding="utf-8")
 
 
 def write_wiki(page: str, content: str) -> str:
-    WIKI_DIR.mkdir(exist_ok=True)
-    path = WIKI_DIR / f"{page}.md"
+    path = resolve_wiki_page_path(page)
     created = not path.exists()
     path.write_text(content, encoding="utf-8")
     msg = f"{'Created' if created else 'Updated'} wiki/{page}.md"
@@ -108,7 +99,7 @@ def write_wiki(page: str, content: str) -> str:
 
 
 def read_source(path: str) -> str:
-    full = RAW_DIR / path
+    full = resolve_path_under(RAW_DIR, path)
     if not full.exists():
         return f"Source '{path}' does not exist."
     # Handle binary files (PDFs, etc.)
@@ -191,6 +182,10 @@ def _fallback_search(query: str) -> str:
     return "\n".join(results) if results else "No results found."
 
 
+def lint_wiki() -> str:
+    return format_lint_report(run_wiki_lint())
+
+
 TOOL_EXECUTORS = {
     "list_wiki": lambda args: list_wiki(),
     "read_wiki": lambda args: read_wiki(args["page"]),
@@ -198,6 +193,7 @@ TOOL_EXECUTORS = {
     "read_source": lambda args: read_source(args["path"]),
     "list_sources": lambda args: list_sources(),
     "search_wiki": lambda args: search_wiki(args["query"]),
+    "lint_wiki": lambda args: lint_wiki(),
 }
 
 
