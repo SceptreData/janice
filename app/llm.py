@@ -30,17 +30,20 @@ client = AsyncOpenAI(
 
 TOOL_SCHEMA_BLOCK = json.dumps(TOOL_DEFINITIONS, indent=2)
 
-# Simple token-bucket rate limiter for outgoing API calls.
-# Defaults: 15 requests per 60-second window.
-_RATE_LIMIT = int(os.environ.get("LLM_RATE_LIMIT", "15"))
+# Optional token-bucket rate limiter for outgoing API calls.
+# Default: disabled. Set LLM_RATE_LIMIT to a positive integer to enable it.
+_RATE_LIMIT = int(os.environ.get("LLM_RATE_LIMIT", "0"))
 _RATE_WINDOW = float(os.environ.get("LLM_RATE_WINDOW", "60"))
-_MAX_TOOL_ROUNDS = int(os.environ.get("LLM_MAX_TOOL_ROUNDS", "15"))
+_MAX_TOOL_ROUNDS = int(os.environ.get("LLM_MAX_TOOL_ROUNDS", "50"))
 _request_timestamps: collections.deque[float] = collections.deque()
 _rate_lock = asyncio.Lock()
 
 
 async def _wait_for_capacity() -> float:
     """Block until a request slot is available. Returns seconds waited."""
+    if _RATE_LIMIT <= 0:
+        return 0.0
+
     waited = 0.0
     async with _rate_lock:
         now = time.monotonic()

@@ -9,7 +9,7 @@ Janice is an LLM-powered wiki builder. Users upload source documents, chat with 
 ## Architecture
 
 - **FastAPI backend** (`app/main.py`) — serves the API and static frontend.
-- **LLM layer** (`app/llm.py`) — manages the chat loop with prompt-based tool calling via OpenRouter (using the OpenAI SDK). The LLM emits `\`\`\`tool` fenced blocks which are parsed and executed in a loop with a hard cap of 15 rounds per message (configurable with `LLM_MAX_TOOL_ROUNDS`).
+- **LLM layer** (`app/llm.py`) — manages the chat loop with prompt-based tool calling via OpenRouter (using the OpenAI SDK). The LLM emits `\`\`\`tool` fenced blocks which are parsed and executed in a loop with a hard cap of 50 rounds per message by default (configurable with `LLM_MAX_TOOL_ROUNDS`). Local request throttling is disabled by default unless `LLM_RATE_LIMIT` is set.
 - **Tool system** (`app/tools.py`) — seven tools (list_wiki, read_wiki, write_wiki, read_source, list_sources, search_wiki, lint_wiki) that the LLM calls to read/write files and validate the wiki. Search uses `qmd` (hybrid BM25/vector) with a substring fallback.
 - **Schema** (`schema.md`) — the system prompt injected into every LLM conversation. Defines wiki conventions, operations (ingest, query, lint), and the three-layer model (raw/ -> wiki/ -> schema.md).
 - **Frontend** (`app/static/`) — vanilla HTML/CSS/JS. Uses `marked.js` for markdown rendering, `d3.js` for the wiki graph, SSE for streaming chat responses.

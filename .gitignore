@@ -38,3 +38,4 @@ logs/
 # Raw/uploaded data
 raw/
 .claude
+wiki/*

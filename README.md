@@ -57,7 +57,7 @@ Open `http://localhost:8000`.
 | -------------------- | -------- | ---------------------------- | ------------------------------------ |
 | `OPENROUTER_API_KEY` | Yes      | --                           | OpenRouter API key                   |
 | `LLM_MODEL`          | No       | `google/gemma-3-27b-it:free` | Model ID from OpenRouter             |
-| `LLM_RATE_LIMIT`     | No       | `15`                         | Max requests per rate window         |
+| `LLM_RATE_LIMIT`     | No       | `0`                          | Max requests per rate window; `0` disables local throttling |
 | `LLM_RATE_WINDOW`    | No       | `60`                         | Rate window in seconds               |
-| `LLM_MAX_TOOL_ROUNDS`| No       | `15`                         | Hard cap on tool-call rounds per chat |
+| `LLM_MAX_TOOL_ROUNDS`| No       | `50`                         | Hard cap on tool-call rounds per chat |
 | `QMD_PATH`           | No       | `qmd`                        | Path to qmd binary for hybrid search |
