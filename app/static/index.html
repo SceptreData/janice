@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Janice — LLM Wiki</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Left pane: Chat -->
+    <div class="pane pane-left" id="pane-left" style="position: relative;">
+      <div class="header">
+        <h1>Janice</h1>
+        <span class="subtitle">LLM Wiki</span>
+        <button onclick="triggerLint()" class="header-btn" title="Run wiki lint check">Lint</button>
+        <button onclick="copyChatText()" class="header-btn" title="Copy chat to clipboard (Ctrl+Shift+C)">Copy</button>
+        <select id="model-select" onchange="setModel(this.value)" style="margin-left:auto; background:var(--bg1); color:var(--fg); border:1px solid var(--bg2); border-radius:3px; padding:2px 6px; font-family:inherit; font-size:12px; max-width:200px;">
+          <option value="">Loading models...</option>
+        </select>
+        <select id="theme-select" onchange="setTheme(this.value)" style="background:var(--bg1); color:var(--fg); border:1px solid var(--bg2); border-radius:3px; padding:2px 6px; font-family:inherit; font-size:12px;">
+          <option value="everforest">Everforest</option>
+          <option value="gruvbox">Gruvbox</option>
+        </select>
+      </div>
+      <div class="ingest-banner" id="ingest-banner">
+        <span id="ingest-count">0 new files ready for ingest</span>
+        <button onclick="ingestFiles()">Ingest</button>
+      </div>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-area">
+        <textarea id="chat-input" placeholder="Ask a question or drop files to ingest..." rows="1"
+          onkeydown="handleKeyDown(event)"></textarea>
+        <button id="send-btn" onclick="sendMessage()">Send</button>
+      </div>
+      <div class="drop-overlay" id="drop-overlay">Drop files to add as sources</div>
+    </div>
+
+    <div class="resize-handle" id="resize-handle"></div>
+
+    <!-- Right pane: Wiki browser -->
+    <div class="pane pane-right">
+      <div class="tabs">
+        <div class="tab active" data-tab="tree" onclick="switchTab('tree')">Pages</div>
+        <div class="tab" data-tab="page" onclick="switchTab('page')">View</div>
+        <div class="tab" data-tab="graph" onclick="switchTab('graph')">Graph</div>
+      </div>
+
+      <!-- File tree tab -->
+      <div class="tab-content active" id="tab-tree">
+        <div class="file-tree" id="file-tree"></div>
+      </div>
+
+      <!-- Page view tab -->
+      <div class="tab-content" id="tab-page">
+        <div class="wiki-content" id="wiki-page"></div>
+      </div>
+
+      <!-- Graph tab -->
+      <div class="tab-content" id="tab-graph">
+        <div class="graph-container" id="graph-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
