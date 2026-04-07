@@ -9,16 +9,9 @@ from collections.abc import AsyncGenerator
 
 from openai import AsyncOpenAI, RateLimitError
 
+from .log import log_event as _log_event
 from .tools import TOOL_DEFINITIONS, execute_tool
 from .wiki_ops import SCHEMA_PATH, SOUL_PATH
-
-logger = logging.getLogger("janice")
-
-
-def _log_event(event: str, **kwargs) -> None:
-    """Emit a structured log line as JSON."""
-    record = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "event": event, **kwargs}
-    logger.info(json.dumps(record))
 
 OPENROUTER_BASE = "https://openrouter.ai/api/v1"
 MODEL = os.environ.get("LLM_MODEL", "google/gemma-3-27b-it:free")
