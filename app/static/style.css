@@ -330,6 +330,11 @@ body {
   font-size: 12px;
 }
 
+.ingest-cancel-btn {
+  background: var(--bg2);
+  color: var(--fg);
+}
+
 /* Wiki browser */
 .wiki-content {
   flex: 1;

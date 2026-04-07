@@ -5,6 +5,32 @@ let pendingFiles = [];
 let isStreaming = false;
 let selectedModel = localStorage.getItem("model") || "";
 
+function saveChatHistory() {
+  sessionStorage.setItem("chatHistory", JSON.stringify(chatHistory));
+}
+
+function restoreChatHistory() {
+  try {
+    const saved = sessionStorage.getItem("chatHistory");
+    if (!saved) return false;
+    const history = JSON.parse(saved);
+    if (!history.length) return false;
+    chatHistory = history;
+    for (const msg of chatHistory) {
+      if (msg.role === "user") {
+        appendMessage("user", msg.content);
+      } else {
+        const msgEl = createAssistantMessage();
+        removeStreamingIndicator(msgEl);
+        setAssistantText(msgEl, msg.content);
+      }
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 function startStreaming() {
   isStreaming = true;
   document.getElementById("send-btn").disabled = true;
@@ -86,13 +112,17 @@ async function sendMessage(override) {
   try {
     const fullText = await streamChat(text, chatHistory.slice(0, -1), msgEl);
     if (fullText) {
-      chatHistory.push({ role: "assistant", content: fullText });
+      chatHistory.push({
+        role: "assistant",
+        content: fullText,
+      });
     }
   } catch (err) {
     appendToAssistant(msgEl, `\n\nError: ${err.message}`, "error");
   }
 
   stopStreaming(msgEl);
+  saveChatHistory();
 }
 
 function handleSSE(event, data, msgEl) {
@@ -499,9 +529,27 @@ function setupDragDrop() {
   });
 }
 
-function updateIngestBanner() {
+let ingestPollTimer = null;
+
+function updateIngestBanner(running, status) {
   const banner = document.getElementById("ingest-banner");
+
+  if (running && status) {
+    const done = status.completed.length;
+    const total = done + status.pending.length + status.current_batch.length;
+    const current = status.current_batch.length
+      ? ` -- processing ${status.current_batch.join(", ")}`
+      : "";
+    const text = `Ingesting ${done}/${total}${current}`;
+    banner.innerHTML =
+      `<span class="streaming-indicator"></span> <span id="ingest-count">${escapeHtml(text)}</span>` +
+      `<button class="ingest-cancel-btn" onclick="cancelIngest()">Cancel</button>`;
+    banner.classList.add("visible");
+    return;
+  }
+
   if (pendingFiles.length) {
+    banner.innerHTML = `<span id="ingest-count"></span><button onclick="ingestFiles()">Ingest</button>`;
     document.getElementById("ingest-count").textContent =
       `${pendingFiles.length} file${pendingFiles.length === 1 ? "" : "s"} waiting to be ingested`;
     banner.classList.add("visible");
@@ -510,11 +558,94 @@ function updateIngestBanner() {
   }
 }
 
-function ingestFiles() {
-  const names = pendingFiles.join(", ");
-  pendingFiles = [];
-  updateIngestBanner();
-  sendMessage(`Ingest these new source files: ${names}`);
+let ingestMsgEl = null;
+
+async function ingestFiles() {
+  try {
+    const res = await fetch("/api/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: selectedModel || undefined }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      const total = data.pending.length + data.current_batch.length;
+      pendingFiles = [];
+      updateIngestBanner(true, data);
+      ingestMsgEl = createAssistantMessage();
+      setAssistantText(
+        ingestMsgEl,
+        `Ingesting ${total} file${total === 1 ? "" : "s"} in the background...`,
+      );
+    }
+    // Whether we just started or one was already running, poll for progress
+    pollIngestStatus();
+  } catch (e) {
+    // silent
+  }
+}
+
+async function cancelIngest() {
+  try {
+    await fetch("/api/ingest/cancel", { method: "POST" });
+  } catch (e) {
+    // silent
+  }
+}
+
+let lastCompletedCount = 0;
+
+function pollIngestStatus() {
+  if (ingestPollTimer) return;
+  lastCompletedCount = 0;
+
+  async function tick() {
+    try {
+      const res = await fetch("/api/ingest/status");
+      const status = await res.json();
+
+      if (status.completed.length > lastCompletedCount) {
+        lastCompletedCount = status.completed.length;
+        if (status.status !== "idle") refreshWiki();
+      }
+
+      if (status.status === "idle") {
+        clearInterval(ingestPollTimer);
+        ingestPollTimer = null;
+        if (ingestMsgEl) {
+          const n = status.completed.length;
+          const errText = status.error ? `\n\nError: ${status.error}` : "";
+          removeStreamingIndicator(ingestMsgEl);
+          setAssistantText(
+            ingestMsgEl,
+            `Ingested ${n} file${n === 1 ? "" : "s"}.${errText}`,
+          );
+          ingestMsgEl = null;
+        }
+        await refreshPendingFiles();
+        updateIngestBanner(false);
+        refreshWiki();
+        return;
+      }
+
+      if (ingestMsgEl) {
+        const done = status.completed.length;
+        const total =
+          done + status.pending.length + status.current_batch.length;
+        const current = status.current_batch.length
+          ? ` -- processing ${status.current_batch.join(", ")}`
+          : "";
+        setAssistantText(ingestMsgEl, `Ingesting ${done}/${total}${current}`);
+      }
+      updateIngestBanner(true, status);
+    } catch (e) {
+      clearInterval(ingestPollTimer);
+      ingestPollTimer = null;
+    }
+  }
+
+  tick();
+  ingestPollTimer = setInterval(tick, 2000);
 }
 
 async function refreshPendingFiles() {
@@ -586,7 +717,9 @@ function sanitizeHtml(html) {
   template.innerHTML = html;
 
   template.content
-    .querySelectorAll("script, style, iframe, object, embed, form, input, button, link, meta")
+    .querySelectorAll(
+      "script, style, iframe, object, embed, form, input, button, link, meta",
+    )
     .forEach((node) => node.remove());
 
   template.content.querySelectorAll("*").forEach((node) => {
@@ -737,13 +870,17 @@ async function greetUser() {
   try {
     const fullText = await streamChat(greetMsg, [], msgEl);
     if (fullText) {
-      chatHistory.push({ role: "assistant", content: fullText });
+      chatHistory.push({
+        role: "assistant",
+        content: fullText,
+      });
     }
   } catch (err) {
     appendToAssistant(msgEl, "Howdy! Welcome back to the wiki.");
   }
 
   stopStreaming(msgEl);
+  saveChatHistory();
 }
 
 // -- Lint --
@@ -775,7 +912,8 @@ function formatLintReport(report) {
 }
 
 function countLintIssues(report, severity) {
-  return (report.issues || []).filter((issue) => issue.severity === severity).length;
+  return (report.issues || []).filter((issue) => issue.severity === severity)
+    .length;
 }
 
 function buildLintOffer(report) {
@@ -820,7 +958,10 @@ async function triggerLint() {
       ? `${formatLintReport(report)}\n\n${offerText}`
       : formatLintReport(report);
     setAssistantText(msgEl, fullText);
-    chatHistory.push({ role: "assistant", content: fullText });
+    chatHistory.push({
+      role: "assistant",
+      content: fullText,
+    });
     if (offerText) {
       appendMessageActions(msgEl, [
         {
@@ -834,9 +975,13 @@ async function triggerLint() {
   } catch (err) {
     const errorText = `Wiki lint failed.\n\n${err.message}`;
     setAssistantText(msgEl, errorText);
-    chatHistory.push({ role: "assistant", content: errorText });
+    chatHistory.push({
+      role: "assistant",
+      content: errorText,
+    });
   } finally {
     stopStreaming(msgEl);
+    saveChatHistory();
   }
 }
 
@@ -850,9 +995,26 @@ function analyzeWikiPage(pageName) {
 
 // -- Init --
 
+async function checkIngestOnLoad() {
+  try {
+    const res = await fetch("/api/ingest/status");
+    const status = await res.json();
+    if (status.status !== "idle") {
+      updateIngestBanner(true, status);
+      pollIngestStatus();
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+
 loadTheme();
 loadModels();
 setupDragDrop();
 setupResize();
 refreshWiki();
-greetUser();
+checkIngestOnLoad();
+openWikiPage("index");
+if (!restoreChatHistory()) {
+  greetUser();
+}
