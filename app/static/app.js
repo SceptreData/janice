@@ -1,3 +1,4 @@
+// TODO: Add frontend linting once JS tooling exists here; ESLint, Biome, or OXlint would all be better than flying blind.
 // -- State --
 let chatHistory = [];
 let pendingFiles = [];
@@ -201,6 +202,26 @@ function appendToolResult(msgEl, toolName, result) {
 
   const container = document.getElementById("chat-messages");
   container.scrollTop = container.scrollHeight;
+}
+
+function appendMessageActions(msgEl, actions) {
+  const contentEl = msgEl.querySelector(".content");
+  contentEl.querySelector(".message-actions")?.remove();
+  if (!actions.length) return;
+
+  const actionBar = document.createElement("div");
+  actionBar.className = "message-actions";
+
+  for (const action of actions) {
+    const button = document.createElement("button");
+    button.className = "wiki-action-btn";
+    button.type = "button";
+    button.textContent = action.label;
+    button.addEventListener("click", action.onClick);
+    actionBar.appendChild(button);
+  }
+
+  contentEl.appendChild(actionBar);
 }
 
 function removeStreamingIndicator(msgEl) {
@@ -556,13 +577,46 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // -- Markdown rendering --
 
-function renderMarkdown(text) {
-  // Convert [[wikilinks]] to styled clickable links before rendering
-  const withLinks = text.replace(/\[\[([^\]]+)\]\]/g, (_, name) => {
-    const slug = name.toLowerCase().replace(/\s+/g, "-");
-    return `[${name}](${slug} "wiki")`;
+function normalizeWikiTarget(value) {
+  return value.split("|", 1)[0].trim().toLowerCase().replace(/\s+/g, "-");
+}
+
+function sanitizeHtml(html) {
+  const template = document.createElement("template");
+  template.innerHTML = html;
+
+  template.content
+    .querySelectorAll("script, style, iframe, object, embed, form, input, button, link, meta")
+    .forEach((node) => node.remove());
+
+  template.content.querySelectorAll("*").forEach((node) => {
+    for (const attr of Array.from(node.attributes)) {
+      const name = attr.name.toLowerCase();
+      const value = attr.value.trim().toLowerCase();
+      if (name.startsWith("on")) {
+        node.removeAttribute(attr.name);
+        continue;
+      }
+      if (
+        (name === "href" || name === "src" || name === "xlink:href") &&
+        (value.startsWith("javascript:") || value.startsWith("data:text/html"))
+      ) {
+        node.removeAttribute(attr.name);
+      }
+    }
   });
-  return marked.parse(withLinks);
+
+  return template.innerHTML;
+}
+
+function renderMarkdown(text) {
+  const withLinks = text.replace(/\[\[([^\]]+)\]\]/g, (_, raw) => {
+    const [target, label] = raw.split("|", 2);
+    const slug = normalizeWikiTarget(target);
+    const textLabel = (label || target).trim();
+    return `[${textLabel}](${slug} "wiki")`;
+  });
+  return sanitizeHtml(marked.parse(withLinks));
 }
 
 // -- Utilities --
@@ -694,8 +748,96 @@ async function greetUser() {
 
 // -- Lint --
 
-function triggerLint() {
-  sendMessage("Run a lint check on the wiki.");
+function formatLintReport(report) {
+  const issues = Array.isArray(report.issues) ? report.issues : [];
+  const lines = ["## Wiki Lint", "", report.summary || "Wiki lint completed."];
+
+  for (const severity of ["error", "warning"]) {
+    const group = issues.filter((issue) => issue.severity === severity);
+    if (!group.length) continue;
+    lines.push("");
+    lines.push(severity === "error" ? "### Errors" : "### Warnings");
+    for (const issue of group) {
+      const location = [];
+      if (issue.page) location.push(`[[${issue.page}]]`);
+      if (issue.line) location.push(`line ${issue.line}`);
+      const suffix = location.length ? ` (${location.join(", ")})` : "";
+      lines.push(`- \`${issue.code}\`${suffix}: ${issue.message}`);
+    }
+  }
+
+  if (!issues.length) {
+    lines.push("");
+    lines.push("No issues found.");
+  }
+
+  return lines.join("\n");
+}
+
+function countLintIssues(report, severity) {
+  return (report.issues || []).filter((issue) => issue.severity === severity).length;
+}
+
+function buildLintOffer(report) {
+  const errorCount = countLintIssues(report, "error");
+  const warningCount = countLintIssues(report, "warning");
+  if (!errorCount && !warningCount) return "";
+
+  const issueCount = errorCount + warningCount;
+  const issueLabel = issueCount === 1 ? "issue" : "issues";
+  return `I found ${issueCount} ${issueLabel}. If you want, I can try to fix what I can and rerun lint.`;
+}
+
+function buildLintFixPrompt(report) {
+  return [
+    "Use the latest wiki lint report to fix what you can directly in the repo.",
+    "Prioritize errors first, then straightforward warnings.",
+    "Update index.md and log.md if needed, rerun wiki lint before finishing, and summarize any warnings you intentionally leave alone.",
+    "",
+    formatLintReport(report),
+  ].join("\n");
+}
+
+async function triggerLint() {
+  if (isStreaming) return;
+
+  const lintRequest = "Run wiki lint.";
+  appendMessage("user", lintRequest);
+  chatHistory.push({ role: "user", content: lintRequest });
+
+  startStreaming();
+  const msgEl = createAssistantMessage();
+  setAssistantText(msgEl, "_Running wiki lint..._");
+
+  try {
+    const res = await fetch("/api/wiki/lint");
+    if (!res.ok) {
+      throw new Error("Lint request failed");
+    }
+    const report = await res.json();
+    const offerText = buildLintOffer(report);
+    const fullText = offerText
+      ? `${formatLintReport(report)}\n\n${offerText}`
+      : formatLintReport(report);
+    setAssistantText(msgEl, fullText);
+    chatHistory.push({ role: "assistant", content: fullText });
+    if (offerText) {
+      appendMessageActions(msgEl, [
+        {
+          label: "Fix What You Can",
+          onClick: () => sendMessage(buildLintFixPrompt(report)),
+        },
+      ]);
+    }
+    refreshWiki();
+    refreshPendingFiles();
+  } catch (err) {
+    const errorText = `Wiki lint failed.\n\n${err.message}`;
+    setAssistantText(msgEl, errorText);
+    chatHistory.push({ role: "assistant", content: errorText });
+  } finally {
+    stopStreaming(msgEl);
+  }
 }
 
 function analyzeWikiPage(pageName) {
