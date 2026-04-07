@@ -49,6 +49,10 @@ class LintReport(BaseModel):
     issues: list[LintIssue] = Field(default_factory=list)
 
 
+class IngestRequest(BaseModel):
+    model: str | None = None
+
+
 class ToolCall(BaseModel):
     tool: str
     args: dict

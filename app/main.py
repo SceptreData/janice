@@ -11,8 +11,9 @@ from fastapi import FastAPI, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from .ingest import cancel_ingest, get_status as ingest_status, start_ingest
 from .llm import chat_stream
-from .schema import ChatRequest, GraphData, GraphEdge, GraphNode, LintReport, WikiPage
+from .schema import ChatRequest, GraphData, GraphEdge, GraphNode, IngestRequest, LintReport, WikiPage
 from .wiki_lint import run_wiki_lint
 from .wiki_ops import (
     RAW_DIR,
@@ -69,6 +70,33 @@ async def chat(req: ChatRequest):
         yield "event: done\ndata: {}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+# --- Ingest API ---
+
+
+@app.post("/api/ingest")
+async def ingest(req: IngestRequest):
+    pending = await pending_sources()
+    if not pending:
+        return JSONResponse(status_code=400, content={"error": "No pending sources"})
+    result = start_ingest(pending, model=req.model)
+    if "error" in result:
+        return JSONResponse(status_code=409, content=result)
+    return result
+
+
+@app.get("/api/ingest/status")
+async def ingest_status_endpoint():
+    return ingest_status()
+
+
+@app.post("/api/ingest/cancel")
+async def ingest_cancel():
+    result = cancel_ingest()
+    if "error" in result:
+        return JSONResponse(status_code=409, content=result)
+    return result
 
 
 # --- Models API ---
