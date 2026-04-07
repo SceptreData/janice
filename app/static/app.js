@@ -391,11 +391,11 @@ function drawGraph(data) {
       d3
         .forceLink(data.edges)
         .id((d) => d.id)
-        .distance(80),
+        .distance(150),
     )
-    .force("charge", d3.forceManyBody().strength(-200))
+    .force("charge", d3.forceManyBody().strength(-400))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collision", d3.forceCollide().radius(30));
+    .force("collision", d3.forceCollide().radius(50));
 
   const link = svg
     .append("g")
