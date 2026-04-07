@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
@@ -8,7 +8,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    history: list[ChatMessage] = []
+    history: list[ChatMessage] = Field(default_factory=list)
     model: str | None = None
 
 
@@ -16,7 +16,7 @@ class WikiPage(BaseModel):
     name: str
     title: str
     summary: str
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
 
 
 class GraphNode(BaseModel):
@@ -33,6 +33,20 @@ class GraphEdge(BaseModel):
 class GraphData(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+class LintIssue(BaseModel):
+    severity: str
+    code: str
+    message: str
+    page: str | None = None
+    line: int | None = None
+
+
+class LintReport(BaseModel):
+    ok: bool
+    summary: str
+    issues: list[LintIssue] = Field(default_factory=list)
 
 
 class ToolCall(BaseModel):
